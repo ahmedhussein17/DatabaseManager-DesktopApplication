@@ -66,10 +66,10 @@ public class BackupService {
         }
     }
 
-    private boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        try (ResultSet rs = meta.getTables(null, null, tableName, new String[]{"TABLE"})) {
+        private boolean tableExists(Connection conn, String tableName) throws SQLException {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(conn.getCatalog(), null, tableName, new String[]{"TABLE"})) {
             return rs.next();
         }
-    }
+}
 }
