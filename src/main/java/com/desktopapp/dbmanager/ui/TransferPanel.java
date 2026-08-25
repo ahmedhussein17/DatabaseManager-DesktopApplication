@@ -2,7 +2,9 @@ package com.desktopapp.dbmanager.ui;
 
 import com.desktopapp.dbmanager.config.ConfigLoader;
 import com.desktopapp.dbmanager.config.Environment;
+import com.desktopapp.dbmanager.db.ObjectService;
 import com.desktopapp.dbmanager.db.TransferService;
+import com.desktopapp.dbmanager.model.DbObject;
 import com.desktopapp.dbmanager.model.OperationResult;
 
 import java.awt.GridBagConstraints;
@@ -15,17 +17,17 @@ import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JTextField;
 import javax.swing.SwingWorker;
 
 public class TransferPanel extends JPanel {
 
     private final ConfigLoader configLoader = new ConfigLoader();
+    private final ObjectService objectService = new ObjectService();
     private final TransferService transferService = new TransferService();
 
     private final JComboBox<Environment> sourceEnvCombo;
     private final JComboBox<Environment> destEnvCombo;
-    private final JTextField objectNameField;
+    private final JComboBox<String> tableCombo;
     private final JButton transferBtn;
 
     public TransferPanel() {
@@ -49,8 +51,8 @@ public class TransferPanel extends JPanel {
         gbc.gridx = 0; gbc.gridy = 2;
         add(new JLabel("Table Name:"), gbc);
         gbc.gridx = 1;
-        objectNameField = new JTextField(20);
-        add(objectNameField, gbc);
+        tableCombo = new JComboBox<>();
+        add(tableCombo, gbc);
 
         gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 2;
         transferBtn = new JButton("Transfer (Safe Auto-Backup)");
@@ -58,6 +60,7 @@ public class TransferPanel extends JPanel {
 
         loadEnvironmentsIntoComboBoxes();
 
+        sourceEnvCombo.addActionListener(e -> loadTablesForSelectedSource());
         transferBtn.addActionListener(e -> runTransfer());
     }
 
@@ -69,15 +72,51 @@ public class TransferPanel extends JPanel {
             sourceEnvCombo.addItem(env);
             destEnvCombo.addItem(env);
         }
+        loadTablesForSelectedSource();
+    }
+
+    private void loadTablesForSelectedSource() {
+        Environment source = (Environment) sourceEnvCombo.getSelectedItem();
+        tableCombo.removeAllItems();
+        if (source == null) {
+            return;
+        }
+
+        transferBtn.setEnabled(false);
+        SwingWorker<List<DbObject>, Void> worker = new SwingWorker<>() {
+            @Override
+            protected List<DbObject> doInBackground() throws Exception {
+                return objectService.listObjects(source);
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    List<DbObject> objects = get();
+                    for (DbObject obj : objects) {
+                        if ("TABLE".equals(obj.getType())) {
+                            tableCombo.addItem(obj.getName());
+                        }
+                    }
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(TransferPanel.this,
+                            "Failed to load tables for " + source.getName() + ": " + ex.getCause().getMessage(),
+                            "Error", JOptionPane.ERROR_MESSAGE);
+                } finally {
+                    transferBtn.setEnabled(true);
+                }
+            }
+        };
+        worker.execute();
     }
 
     private void runTransfer() {
         Environment source = (Environment) sourceEnvCombo.getSelectedItem();
         Environment dest = (Environment) destEnvCombo.getSelectedItem();
-        String tableName = objectNameField.getText().trim();
+        String tableName = (String) tableCombo.getSelectedItem();
 
-        if (source == null || dest == null || tableName.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Select a source, destination, and enter a table name.");
+        if (source == null || dest == null || tableName == null) {
+            JOptionPane.showMessageDialog(this, "Select a source, destination, and table.");
             return;
         }
 
