@@ -1,4 +1,4 @@
-package com.desktopapp.dbmanager.UI;
+package com.desktopapp.dbmanager.ui;
 
 import java.awt.BorderLayout;
 
