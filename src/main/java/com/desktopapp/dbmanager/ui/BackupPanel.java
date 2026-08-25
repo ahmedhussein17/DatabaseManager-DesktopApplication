@@ -3,6 +3,8 @@ package com.desktopapp.dbmanager.ui;
 import com.desktopapp.dbmanager.config.ConfigLoader;
 import com.desktopapp.dbmanager.config.Environment;
 import com.desktopapp.dbmanager.db.BackupService;
+import com.desktopapp.dbmanager.db.ObjectService;
+import com.desktopapp.dbmanager.model.DbObject;
 import com.desktopapp.dbmanager.model.OperationResult;
 
 import java.awt.GridBagConstraints;
@@ -15,17 +17,17 @@ import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JTextField;
 import javax.swing.SwingWorker;
 
 public class BackupPanel extends JPanel {
 
     private final ConfigLoader configLoader = new ConfigLoader();
+    private final ObjectService objectService = new ObjectService();
     private final BackupService backupService = new BackupService();
 
     private final JComboBox<Environment> envComboBox;
-    private final JTextField tableNameField;
-    private final JTextField backupNameField;
+    private final JComboBox<String> tableCombo;
+    private final JComboBox<String> backupCombo;
     private final JButton backupBtn;
     private final JButton restoreBtn;
 
@@ -44,14 +46,14 @@ public class BackupPanel extends JPanel {
         gbc.gridx = 0; gbc.gridy = 1;
         add(new JLabel("Table Name:"), gbc);
         gbc.gridx = 1;
-        tableNameField = new JTextField(20);
-        add(tableNameField, gbc);
+        tableCombo = new JComboBox<>();
+        add(tableCombo, gbc);
 
         gbc.gridx = 0; gbc.gridy = 2;
-        add(new JLabel("Backup Table Name (for restore):"), gbc);
+        add(new JLabel("Backup Table (for restore):"), gbc);
         gbc.gridx = 1;
-        backupNameField = new JTextField(20);
-        add(backupNameField, gbc);
+        backupCombo = new JComboBox<>();
+        add(backupCombo, gbc);
 
         gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 2;
         backupBtn = new JButton("Create Backup (TableName_Date)");
@@ -63,6 +65,7 @@ public class BackupPanel extends JPanel {
 
         loadEnvironmentsIntoComboBox();
 
+        envComboBox.addActionListener(e -> loadTablesForSelectedEnvironment());
         backupBtn.addActionListener(e -> runBackup());
         restoreBtn.addActionListener(e -> runRestore());
     }
@@ -73,14 +76,52 @@ public class BackupPanel extends JPanel {
         for (Environment env : environments) {
             envComboBox.addItem(env);
         }
+        loadTablesForSelectedEnvironment();
+    }
+
+    private void loadTablesForSelectedEnvironment() {
+        Environment env = (Environment) envComboBox.getSelectedItem();
+        tableCombo.removeAllItems();
+        backupCombo.removeAllItems();
+        if (env == null) {
+            return;
+        }
+
+        setButtonsEnabled(false);
+        SwingWorker<List<DbObject>, Void> worker = new SwingWorker<>() {
+            @Override
+            protected List<DbObject> doInBackground() throws Exception {
+                return objectService.listObjects(env);
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    List<DbObject> objects = get();
+                    for (DbObject obj : objects) {
+                        if ("TABLE".equals(obj.getType())) {
+                            tableCombo.addItem(obj.getName());
+                            backupCombo.addItem(obj.getName());
+                        }
+                    }
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(BackupPanel.this,
+                            "Failed to load tables for " + env.getName() + ": " + ex.getCause().getMessage(),
+                            "Error", JOptionPane.ERROR_MESSAGE);
+                } finally {
+                    setButtonsEnabled(true);
+                }
+            }
+        };
+        worker.execute();
     }
 
     private void runBackup() {
         Environment env = (Environment) envComboBox.getSelectedItem();
-        String tableName = tableNameField.getText().trim();
+        String tableName = (String) tableCombo.getSelectedItem();
 
-        if (env == null || tableName.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Select an environment and enter a table name.");
+        if (env == null || tableName == null) {
+            JOptionPane.showMessageDialog(this, "Select an environment and a table.");
             return;
         }
 
@@ -98,6 +139,9 @@ public class BackupPanel extends JPanel {
                     JOptionPane.showMessageDialog(BackupPanel.this, result.getMessage(),
                             result.isSuccess() ? "Backup Complete" : "Backup Failed",
                             result.isSuccess() ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.ERROR_MESSAGE);
+                    if (result.isSuccess()) {
+                        loadTablesForSelectedEnvironment();
+                    }
                 } catch (Exception ex) {
                     JOptionPane.showMessageDialog(BackupPanel.this, "Unexpected error: " + ex.getMessage(),
                             "Error", JOptionPane.ERROR_MESSAGE);
@@ -111,11 +155,16 @@ public class BackupPanel extends JPanel {
 
     private void runRestore() {
         Environment env = (Environment) envComboBox.getSelectedItem();
-        String tableName = tableNameField.getText().trim();
-        String backupName = backupNameField.getText().trim();
+        String tableName = (String) tableCombo.getSelectedItem();
+        String backupName = (String) backupCombo.getSelectedItem();
 
-        if (env == null || tableName.isEmpty() || backupName.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Select an environment, and enter both the table name and backup table name.");
+        if (env == null || tableName == null || backupName == null) {
+            JOptionPane.showMessageDialog(this, "Select an environment, a table, and a backup table.");
+            return;
+        }
+
+        if (tableName.equals(backupName)) {
+            JOptionPane.showMessageDialog(this, "Backup table must be different from the table you're restoring into.");
             return;
         }
 
