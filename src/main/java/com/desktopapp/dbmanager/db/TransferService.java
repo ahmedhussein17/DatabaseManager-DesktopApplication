@@ -75,17 +75,15 @@ public class TransferService {
         String typeName = meta.getColumnTypeName(index).toLowerCase();
         int precision = meta.getPrecision(index);
         int scale = meta.getScale(index);
-
+        
         switch (typeName) {
             case "varchar":
-            case "nvarchar":
             case "char":
-            case "nchar":
                 return typeName + "(" + (precision > 0 ? precision : 255) + ")";
             case "decimal":
             case "numeric":
                 return typeName + "(" + precision + "," + scale + ")";
-            default:
+                default:
                 return typeName;
         }
     }
