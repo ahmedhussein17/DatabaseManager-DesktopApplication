@@ -1,0 +1,8 @@
+[
+  {
+    "name": "Dev",
+    "url": "jdbc:sqlserver://localhost:1433;databaseName=DevDB;encrypt=true;trustServerCertificate=true",
+    "user": "",
+    "password": ""
+  }
+]
